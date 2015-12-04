@@ -66,7 +66,7 @@ describe('ngIdle', function() {
 
         IdleProvider.idle(500);
 
-        expect(create()._options().idle).toBe(500);
+        expect(create()._options().idles.default.idle).toBe(500);
       });
 
       it('idle() should throw if argument is less than or equal to zero.', function() {
@@ -153,7 +153,7 @@ describe('ngIdle', function() {
 
         Idle.setIdle(100);
 
-        expect(Idle._options().idle).toBe(100);
+        expect(Idle._options().idles.default.idle).toBe(100);
         expect(Idle.unwatch).toHaveBeenCalled();
         expect(Idle.watch).toHaveBeenCalled();
       });
@@ -521,5 +521,45 @@ describe('ngIdle', function() {
       });
 
     });
+
+    describe('Multiple Idles with timeout disabled', function() {
+      var Idle;
+
+      beforeEach(function() {
+        IdleProvider.timeout(false);
+        Idle = create();
+      });
+
+      it('should NOT count down warning or signal timeout', function() {
+        spyOn($rootScope, '$broadcast');
+
+        IdleProvider.idle(500, 'TestEvent');
+        Idle.watch();
+
+        $interval.flush(DEFAULTIDLEDURATION);
+        $rootScope.$digest();
+
+        expect($rootScope.$broadcast).toHaveBeenCalledWith('IdleStart');
+        expect($rootScope.$broadcast).toHaveBeenCalledWith('IdleTestEventStart');
+        expect($rootScope.$broadcast).not.toHaveBeenCalledWith('IdleWarn');
+
+        $interval.flush(1000);
+        $rootScope.$digest();
+
+        expect($rootScope.$broadcast).not.toHaveBeenCalledWith('IdleWarn');
+
+        $interval.flush(1000);
+        $rootScope.$digest();
+
+        expect($rootScope.$broadcast).not.toHaveBeenCalledWith('IdleWarn');
+
+        $interval.flush(1000);
+        $rootScope.$digest();
+
+        expect($rootScope.$broadcast).not.toHaveBeenCalledWith('IdleTimeout');
+      });
+
+    });
+
   });
 });
