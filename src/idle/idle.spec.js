@@ -561,5 +561,27 @@ describe('ngIdle', function() {
 
     });
 
+    describe('Multiple Idles TimoutTrigger', function() {
+      var Idle;
+
+      beforeEach(function() {
+        Idle = create();
+      });
+
+      it('should have default as timeoutTrigger', function() {
+        IdleProvider.idle(500, 'TestEvent');
+        expect(Idle._options().timeoutTrigger).toEqual('default');
+      });
+
+      it('should have TestEvent? as timeoutTrigger', function() {
+        IdleProvider.idle(50000, 'TestEvent');
+        expect(Idle._options().timeoutTrigger).toEqual('TestEvent');
+
+        IdleProvider.idle(50001, 'TestEvent2');
+        expect(Idle._options().timeoutTrigger).toEqual('TestEvent2');
+      });
+
+    });
+
   });
 });
