@@ -1,11 +1,31 @@
 angular.module('ngIdle.localStorage', [])
-  .service('IdleStorageAccessor', ['$window', function($window) {
-    return {
-      get: function() {
-        return $window.localStorage;
-      }
-    }
-  }])
+  .provider('IdleStorageAccessor', function() {
+
+      var storageGetter = function($injector) {
+          var $window = $injector.get('$window');
+          return $window.localStorage;
+      };
+
+      /**
+       * Sets a function to retrieve the storage where Idle will save it's expiry.
+       * The function will be called with $injector as the only parameter.
+       * Default is local storage.
+       * @param getterFunction
+       */
+      this.setStorageGetter = function(getterFunction) {
+          if (typeof getterFunction === 'function') {
+              storageGetter = getterFunction;
+          }
+      };
+
+      this.$get = ['$injector', function($injector) {
+          return {
+              get: function() {
+                  return storageGetter($injector);
+              }
+          }
+      }];
+  })
   .service('IdleLocalStorage', ['IdleStorageAccessor', function(IdleStorageAccessor) {
     function AlternativeStorage() {
       var storageMap = {};
