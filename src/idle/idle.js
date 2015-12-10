@@ -1,7 +1,12 @@
 angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
   .provider('Idle', function() {
     var options = {
-      idle: 20 * 60, // in seconds (default is 20min)
+      idles: {
+        default: {
+          idle: 20 * 60 // in seconds (default is 20min)
+        }
+      },
+      timeoutTrigger: 'default',
       timeout: 30, // in seconds (default is 30sec)
       autoResume: 'idle', // lets events automatically resume (unsets idle state/resets warning)
       interrupt: 'mousemove keydown DOMMouseScroll mousewheel mousedown touchstart touchmove scroll',
@@ -22,10 +27,27 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
       options.interrupt = events;
     };
 
-    var setIdle = this.idle = function(seconds) {
+    var getIdleOption = function(eventName, create) {
+      var option = options.idles[eventName ? eventName : 'default'];
+      if (create && !option) {
+        option = {};
+        options.idles[eventName] = option;
+      }
+      return option;
+    };
+
+    var setIdle = this.idle = function(seconds, eventName) {
       if (seconds <= 0) throw new Error('Idle must be a value in seconds, greater than 0.');
 
-      options.idle = seconds;
+      getIdleOption(eventName, true).idle = seconds;
+
+      for (var idleOptionKey in options.idles) {
+        if (options.idles.hasOwnProperty(idleOptionKey)
+          && options.idles[idleOptionKey].idle > options.idles[options.timeoutTrigger].idle) {
+
+          options.timeoutTrigger = idleOptionKey;
+        }
+      }
     };
 
     this.autoResume = function(value) {
@@ -41,7 +63,7 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
     this.$get = ['$interval', '$log', '$rootScope', '$document', 'Keepalive', 'IdleLocalStorage', '$window',
       function($interval, $log, $rootScope, $document, Keepalive, LocalStorage, $window) {
         var state = {
-          idle: null,
+          idle: {},
           timeout: null,
           idling: false,
           running: false,
@@ -64,15 +86,39 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
           Keepalive.stop();
         }
 
-        function toggleState() {
-          state.idling = !state.idling;
-          var name = state.idling ? 'Start' : 'End';
+        function isEmptyObject(obj) {
+          if (!obj || obj === undefined) {
+            return true;
+          }
+          if (Object.getOwnPropertyNames) {
+            return Object.getOwnPropertyNames(obj).length > 0;
+          }
+          for (var key in obj) {
+            if (obj.hasOwnProperty(key)) {
+              return false;
+            }
+          }
+          return true;
+        }
+
+        function toggleState(idleName) {
+          var name = '';
+          if (!idleName) {
+            state.idling = !state.idling;
+          } else {
+            // Temporary setting idling state to state of current idleName.
+            // At the end we set the overall idleState to the "real"
+            // state - since we my have multiple idleNames.
+            state.idling = !!state.idle[idleName];
+            name += idleName === 'default' ? '' : idleName;
+          }
+          name += (state.idling ? 'Start' : 'End');
 
           $rootScope.$broadcast('Idle' + name);
 
           if (state.idling) {
             stopKeepalive();
-            if (options.timeout) {
+            if (options.timeout && options.timeoutTrigger === idleName) {
               state.countdown = options.timeout;
               countdown();
               state.timeout = $interval(countdown, 1000, options.timeout, false);
@@ -81,7 +127,16 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             startKeepalive();
           }
 
-          $interval.cancel(state.idle);
+          var intervalPromise = state.idle[idleName ? idleName : 'default'];
+          if (intervalPromise) {
+            $interval.cancel(intervalPromise);
+            delete state.idle[idleName ? idleName : 'default'];
+          }
+
+          // setting the overall idle state
+          if (idleName) {
+            state.idling = !isEmptyObject(state.idle);
+          }
         }
 
         function countdown() {
@@ -98,8 +153,7 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
 
         function timeout() {
           stopKeepalive();
-          $interval.cancel(state.idle);
-          $interval.cancel(state.timeout);
+          cancelAllIntervalls();
 
           state.idling = true;
           state.running = false;
@@ -108,11 +162,11 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
           $rootScope.$broadcast('IdleTimeout');
         }
 
-        function changeOption(self, fn, value) {
+        function changeOption(self, fn, value, eventName) {
           var reset = self.running();
 
           self.unwatch();
-          fn(value);
+          fn(value, eventName);
           if (reset) self.watch();
         }
 
@@ -127,6 +181,24 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
           else LocalStorage.set('expiry', {id: id, time: date});
         }
 
+        function cancelAllIntervalls() {
+          for (var key in state.idle) {
+            if (state.idle.hasOwnProperty(key)) {
+              $interval.cancel(state.idle[key]);
+            }
+          }
+          state.idle = {};
+          $interval.cancel(state.timeout);
+        }
+
+        function startIdleIntervalls() {
+          for (var key in options.idles) {
+            if (options.idles.hasOwnProperty(key)) {
+              state.idle[key] = $interval(toggleState, options.idles[key].idle * 1000, 0, false, key)
+            }
+          }
+        }
+
         var svc = {
           _options: function() {
             return options;
@@ -134,14 +206,14 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
           _getNow: function() {
             return new Date();
           },
-          getIdle: function(){
-            return options.idle;
+          getIdle: function(eventName){
+            return getIdleOption(eventName) ? getIdleOption(eventName).idle : undefined;
           },
           getTimeout: function(){
             return options.timeout;
           },
-          setIdle: function(seconds) {
-            changeOption(this, setIdle, seconds);
+          setIdle: function(seconds, eventName) {
+            changeOption(this, setIdle, seconds, eventName);
           },
           setTimeout: function(seconds) {
             changeOption(this, setTimeout, seconds);
@@ -157,12 +229,11 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             return state.idling;
           },
           watch: function(noExpiryUpdate) {
-            $interval.cancel(state.idle);
-            $interval.cancel(state.timeout);
+            cancelAllIntervalls();
 
             // calculate the absolute expiry date, as added insurance against a browser sleeping or paused in the background
             var timeout = !options.timeout ? 0 : options.timeout;
-            if (!noExpiryUpdate) setExpiry(new Date(new Date().getTime() + ((options.idle + timeout) * 1000)));
+            if (!noExpiryUpdate) setExpiry(new Date(new Date().getTime() + ((getIdleOption().idle + timeout) * 1000)));
 
 
             if (state.idling) toggleState(); // clears the idle state if currently idling
@@ -170,11 +241,10 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
 
             state.running = true;
 
-            state.idle = $interval(toggleState, options.idle * 1000, 0, false);
+            startIdleIntervalls();
           },
           unwatch: function() {
-            $interval.cancel(state.idle);
-            $interval.cancel(state.timeout);
+            cancelAllIntervalls();
 
             state.idling = false;
             state.running = false;
