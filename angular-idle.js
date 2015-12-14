@@ -83,10 +83,10 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
     var options = {
       idles: {
         default: {
-          idle: 20 * 60, // in seconds (default is 20min)
-          triggerTimeout: true
+          idle: 20 * 60 // in seconds (default is 20min)
         }
       },
+      timeoutTrigger: 'default',
       timeout: 30, // in seconds (default is 30sec)
       autoResume: 'idle', // lets events automatically resume (unsets idle state/resets warning)
       interrupt: 'mousemove keydown DOMMouseScroll mousewheel mousedown touchstart touchmove scroll',
@@ -120,6 +120,14 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
       if (seconds <= 0) throw new Error('Idle must be a value in seconds, greater than 0.');
 
       getIdleOption(eventName, true).idle = seconds;
+
+      for (var idleOptionKey in options.idles) {
+        if (options.idles.hasOwnProperty(idleOptionKey)
+          && options.idles[idleOptionKey].idle > options.idles[options.timeoutTrigger].idle) {
+
+          options.timeoutTrigger = idleOptionKey;
+        }
+      }
     };
 
     this.autoResume = function(value) {
@@ -163,7 +171,7 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             return true;
           }
           if (Object.getOwnPropertyNames) {
-            return Object.getOwnPropertyNames(obj).length > 0;
+            return !Object.getOwnPropertyNames(obj).length > 0;
           }
           for (var key in obj) {
             if (obj.hasOwnProperty(key)) {
@@ -190,7 +198,7 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
 
           if (state.idling) {
             stopKeepalive();
-            if (options.timeout && getIdleOption(idleName).triggerTimeout) {
+            if (options.timeout && options.timeoutTrigger === idleName) {
               state.countdown = options.timeout;
               countdown();
               state.timeout = $interval(countdown, 1000, options.timeout, false);
@@ -205,8 +213,9 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             delete state.idle[idleName ? idleName : 'default'];
           }
 
-          // setting the overall idle state
-          if (idleName) {
+          // Setting the overall idle state if we may be not idling any more.
+          // If there are still intervals running we are still idling.
+          if (idleName && !state.idling) {
             state.idling = !isEmptyObject(state.idle);
           }
         }
@@ -496,13 +505,33 @@ angular.module('ngIdle.title', [])
   }]);
 
 angular.module('ngIdle.localStorage', [])
-  .service('IdleStorageAccessor', ['$window', function($window) {
-    return {
-      get: function() {
-        return $window.localStorage;
-      }
-    }
-  }])
+  .provider('IdleStorageAccessor', function() {
+
+      var storageGetter = function($injector) {
+          var $window = $injector.get('$window');
+          return $window.localStorage;
+      };
+
+      /**
+       * Sets a function to retrieve the storage where Idle will save it's expiry.
+       * The function will be called with $injector as the only parameter.
+       * Default is local storage.
+       * @param getterFunction
+       */
+      this.setStorageGetter = function(getterFunction) {
+          if (typeof getterFunction === 'function') {
+              storageGetter = getterFunction;
+          }
+      };
+
+      this.$get = ['$injector', function($injector) {
+          return {
+              get: function() {
+                  return storageGetter($injector);
+              }
+          }
+      }];
+  })
   .service('IdleLocalStorage', ['IdleStorageAccessor', function(IdleStorageAccessor) {
     function AlternativeStorage() {
       var storageMap = {};
