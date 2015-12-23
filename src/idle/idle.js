@@ -91,7 +91,7 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             return true;
           }
           if (Object.getOwnPropertyNames) {
-            return Object.getOwnPropertyNames(obj).length > 0;
+            return !Object.getOwnPropertyNames(obj).length > 0;
           }
           for (var key in obj) {
             if (obj.hasOwnProperty(key)) {
@@ -133,8 +133,9 @@ angular.module('ngIdle.idle', ['ngIdle.keepalive', 'ngIdle.localStorage'])
             delete state.idle[idleName ? idleName : 'default'];
           }
 
-          // setting the overall idle state
-          if (idleName) {
+          // Setting the overall idle state if we may be not idling any more.
+          // If there are still intervals running we are still idling.
+          if (idleName && !state.idling) {
             state.idling = !isEmptyObject(state.idle);
           }
         }

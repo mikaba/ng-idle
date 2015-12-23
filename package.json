@@ -1,7 +1,7 @@
 {
   "name": "ng-idle",
-  "version": "1.1.1",
-  "description": "Directives and services for responding to idle users in AngularJS",
+  "version": "1.2.0",
+  "description": "Directives and services for responding to idle users in AngularJS. Extended version of ng-idle by HackedByChinese.",
   "keywords": [
     "angularjs",
     "idle",
@@ -18,12 +18,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/HackedByChinese/ng-idle.git"
+    "url": "https://github.com/mikaba/ng-idle.git"
   },
   "author": "Mike Grabski <me@mikegrabski.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/HackedByChinese/ng-idle/issues"
+    "url": "https://github.com/mikaba/ng-idle/issues"
   },
   "dependencies": {
     "angular": "^1.2.0"
